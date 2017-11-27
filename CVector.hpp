@@ -1,121 +1,94 @@
 #include <array>
 #include <cstddef>
-#include <functional>
-#include <iostream>
 #include <memory>
-#include <mutex>
-#include <utility>
 
-// M == branching factor,
-// tells how many children there are for a branch and a leaf
+using std::array;
+using std::make_shared;
+using std::shared_ptr;
 
 const uint32_t B = 4;
 const uint32_t M = 1 << B;
 
-// gotta be fast.
-// same thing could be achieved with / and %,
-// but I believe this is faster.
 uint32_t local_idx(uint32_t idx, uint32_t lvls) {
   return (idx >> (B * lvls)) & (M - 1);
 }
 
-using std::array;
-using std::cout;
-using std::endl;
-using std::make_shared;
-using std::make_unique;
-using std::move;
-using std::mutex;
-using std::pair;
-using std::shared_ptr;
-using std::string;
-using std::unique_ptr;
-
 template <class T> class Node {
 public:
-  virtual shared_ptr<Node<T>> immutable_set(uint32_t idx, uint32_t levels,
-                                            T some) = 0;
+  virtual shared_ptr<Node<T>> immutable_update(uint32_t idx, uint32_t lvls,
+                                               T some) = 0;
+  virtual void mutable_update(uint32_t idx, uint32_t lvls, T some) = 0;
   virtual T get(uint32_t idx, uint32_t levels) = 0;
-  virtual void destructive_set(uint32_t idx, uint32_t lvls, T some) = 0;
 };
 
 template <class T> class Branch : public Node<T> {
 public:
-  //// This one is executed when path copying happens.
-  explicit Branch(array<shared_ptr<Node<T>>, M> c, uint32_t idx) {
-    snapshot_flags = array<bool, M>();
-
-    for (uint32_t i = 0; i < M; i++) {
-      snapshot_flags[i] = true;
-    }
-    snapshot_flags[idx] = false;
-
-    contents = c;
+  explicit Branch(array<shared_ptr<Node<T>>, M> c, array<bool, M> ro) {
+    children = c;
+    read_only = ro;
   }
 
   explicit Branch(shared_ptr<Node<T>> &old_root) {
-    snapshot_flags = array<bool, M>();
-    for (uint32_t i = 0; i < M; i++) {
-      snapshot_flags[i] = true;
-    }
-    snapshot_flags[0] = false;
-    contents = array<shared_ptr<Node<T>>, M>();
     for (uint32_t i = 0; i < M; i++)
-      contents[i] = old_root;
+      children[i] = old_root;
+    for (uint32_t i = 0; i < M; i++)
+      read_only[i] = true;
   }
 
   T get(uint32_t idx, uint32_t lvls) {
-    T some = contents[local_idx(idx, lvls)]->get(idx, lvls - 1);
-    return some;
+    auto l_idx = local_idx(idx, lvls);
+    return children[l_idx]->get(idx, lvls - 1);
   }
 
-  shared_ptr<Node<T>> immutable_set(uint32_t idx, uint32_t lvls, T some) {
-    uint32_t l_idx = local_idx(idx, lvls);
-    for (uint32_t u = 0; u < M; u++) {
-      snapshot_flags[u] = true;
+  shared_ptr<Node<T>> immutable_update(uint32_t idx, uint32_t lvls, T some) {
+    auto l_idx = local_idx(idx, lvls);
+    auto new_read_only = array<bool, M>();
+    for (uint32_t i = 0; i < M; i++) {
+      new_read_only[i] = true;
     }
-    snapshot_flags[l_idx] = false;
-    shared_ptr<Branch<T>> new_branch = make_shared<Branch<T>>(contents, l_idx);
-    new_branch->contents[l_idx] = contents[l_idx]->set(idx, lvls - 1, some);
+    new_read_only[l_idx] = false;
+    auto new_branch = make_shared<Branch<T>>(children, new_read_only);
+    new_branch->mutable_update(idx, lvls, some);
     return new_branch;
   }
 
-  void destructive_set(uint32_t idx, uint32_t lvls, T some) {
-    // this one is the tricky one. This is the default also.
+  void mutable_update(uint32_t idx, uint32_t lvls, T some) {
     auto l_idx = local_idx(idx, lvls);
     if (read_only[l_idx]) {
-      shared_ptr<Node<T>> new_child = contents[l_idx]->set(idx, lvls - 1, some);
+      children[l_idx] = children[l_idx]->immutable_update(idx, lvls - 1, some);
       read_only[l_idx] = false;
     } else {
-      contents[l_idx]->destructive_set(idx, lvls - 1, some);
+      children[l_idx]->mutable_update(idx, lvls - 1, some);
     }
   }
 
+  array<shared_ptr<Node<T>>, M> children;
   array<bool, M> read_only;
-  array<shared_ptr<Node<T>>, M> contents;
 };
 
 template <class T> class Leaf : public Node<T> {
 public:
-  explicit Leaf() { contents = array<T, M>(); }
-  explicit Leaf(array<T, M> c) : contents(c) {}
+  explicit Leaf() { children = array<T, M>(); }
+  explicit Leaf(array<T, M> c) : children(c) {}
 
   T get(uint32_t idx, uint32_t lvls) {
-    T some = contents[local_idx(idx, lvls)];
-    return some;
+    auto l_idx = local_idx(idx, lvls);
+    return children[l_idx];
   }
 
-  shared_ptr<Node<T>> immutable_set(uint32_t idx, uint32_t lvls, T some) {
-    auto new_leaf = make_shared<Leaf<T>>(Leaf<T>(contents));
-    new_leaf->contents[local_idx(idx, lvls)] = some;
+  void mutable_update(uint32_t idx, uint32_t lvls, T some) {
+    auto l_idx = local_idx(idx, lvls);
+    children[l_idx] = some;
+  }
+
+  shared_ptr<Node<T>> immutable_update(uint32_t idx, uint32_t lvls, T some) {
+    shared_ptr<Node<T>> new_leaf = make_shared<Leaf<T>>(Leaf<T>(children));
+    new_leaf->mutable_update(idx, lvls, some);
     return new_leaf;
   }
 
-  void destructive_set(uint32_t idx, uint32_t lvls, T some) {
-    contents[local_idx(idx, lvls)] = some;
-  }
-
-  array<T, M> contents;
+private:
+  array<T, M> children;
 };
 
 template <class T> class CVector {
@@ -124,12 +97,59 @@ public:
     root = nullptr;
     size = 0;
     lvls = 0;
-    snapshot_flag = false;
+    read_only = false;
+  }
+
+  explicit CVector<T>(shared_ptr<Node<T>> r, uint32_t s, uint32_t l, bool ro)
+      : root(r), size(s), lvls(l), read_only(ro) {}
+
+  explicit CVector<T>(int s) {
+    if (s == 0) {
+      root = nullptr;
+      size = 0;
+      lvls = 0;
+      read_only = false;
+    } else if (s < M) {
+      root = make_shared<Leaf<T>>();
+      size = s;
+      lvls = 1;
+      read_only = false;
+    } else {
+      uint32_t level_count = 1;
+      uint32_t x = s;
+      while (x > 0) {
+        x = B >> x;
+        level_count++;
+      }
+      shared_ptr<Node<T>> new_root = make_shared<Leaf<T>>();
+      shared_ptr<Node<T>> r = new_root;
+      for (int i = 1; i < level_count; i++)
+        r = make_shared<Branch<T>>(r);
+      root = r;
+      size = s;
+      lvls = level_count;
+      read_only = true;
+    }
+  }
+
+  CVector snapshot() {
+    read_only = true;
+    return CVector(root, size, lvls, false);
+  }
+
+  T get(uint32_t idx) { return root->get(idx, lvls - 1); }
+
+  void set(uint32_t idx, T some) {
+    if (read_only) {
+      root = root->immutable_update(idx, lvls - 1, some);
+      read_only = false;
+    } else
+      root->mutable_update(idx, lvls - 1, some);
   }
 
 private:
   shared_ptr<Node<T>> root;
   uint32_t size;
   uint32_t lvls;
-  bool snapshot_flag;
+  bool read_only;
 };
