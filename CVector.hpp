@@ -8,10 +8,10 @@ using std::array;
 using std::make_shared;
 using std::shared_ptr;
 
-// using std::cout;
-// using std::endl;
+using std::cout;
+using std::endl;
 
-const uint32_t B = 5;
+const uint32_t B = 3;
 const uint32_t M = 1 << B;
 
 uint32_t local_idx(uint32_t idx, uint32_t lvls) {
@@ -40,15 +40,15 @@ public:
   }
 
   void mutable_update(uint32_t idx, uint32_t lvls, T some) {
-    //    cout << "mutable update on leaf, idx: " << idx << ", lvls: " << lvls
-    //         << ", some: " << some << endl;
+    cout << "mutable update on leaf, idx: " << idx << ", lvls: " << lvls
+         << ", some: " << some << endl;
     auto l_idx = local_idx(idx, lvls);
     children[l_idx] = some;
   }
 
   shared_ptr<Node<T>> immutable_update(uint32_t idx, uint32_t lvls, T some) {
-    // cout << "immutable update on leaf, idx: " << idx << ", lvls: " << lvls
-    //      << ", some: " << some << endl;
+    cout << "immutable update on leaf, idx: " << idx << ", lvls: " << lvls
+         << ", some: " << some << endl;
     shared_ptr<Node<T>> new_leaf = make_shared<Leaf<T>>(Leaf<T>(children));
     new_leaf->mutable_update(idx, lvls, some);
     return new_leaf;
@@ -163,8 +163,8 @@ public:
   }
 
   CVector snapshot() {
-    // read_only = true;
-    // cout << "Snap" << endl;
+    cout << "Snap" << endl;
+    read_only = true;
     return CVector(root, size, lvls, false);
   }
 
