@@ -1,8 +1,7 @@
 #include <array>
 #include <cstddef>
-#include <memory>
-
 #include <iostream>
+#include <memory>
 
 using std::array;
 using std::make_shared;
@@ -16,6 +15,13 @@ const uint32_t M = 1 << B;
 
 uint32_t local_idx(uint32_t idx, uint32_t lvls) {
   return (idx >> (B * lvls)) & (M - 1);
+}
+
+uint32_t calculate_min_level_count(uint32_t size) {
+  uint32_t lvl_count = 0;
+  for (uint32_t x = size; x > 0; x = x >> B, lvl_count++) {
+  }
+  return lvl_count;
 }
 
 template <class T> class Node {
@@ -48,7 +54,7 @@ public:
 
   shared_ptr<Node<T>> immutable_update(uint32_t idx, uint32_t lvls, T some) {
     // cout << "immutable update on leaf, idx: " << idx << ", lvls: " << lvls
-    //     << ", some: " << some << endl;
+    //      << ", some: " << some << endl;
     shared_ptr<Node<T>> new_leaf = make_shared<Leaf<T>>(Leaf<T>(children));
     new_leaf->mutable_update(idx, lvls, some);
     return new_leaf;
@@ -60,7 +66,10 @@ public:
   array<shared_ptr<Node<T>>, M> children;
   array<bool, M> read_only;
 
+  // partial populate
   explicit Branch(uint32_t s, uint32_t lvls) { populate_children(s, lvls); }
+
+  explicit Branch(uint32_t lvls) { full_populate(lvls); }
 
   explicit Branch(array<shared_ptr<Node<T>>, M> c, array<bool, M> ro) {
     children = c;
@@ -75,19 +84,35 @@ public:
   }
 
   void populate_children(uint32_t s, uint32_t lvls) {
-    auto l_size = local_idx(s, lvls);
-    if (1 < lvls) {
-      for (uint32_t i = 0; i < l_size; i++) {
-        children[i] = make_shared<Branch<T>>(s, lvls - 1);
+    auto last_idx = local_idx(s - 1, lvls);
+    if (lvls > 1) {
+      for (uint32_t i = 0; i < last_idx; i++) {
+        children[i] = make_shared<Branch<T>>(lvls - 1);
         read_only[i] = false;
       }
+      children[last_idx] = make_shared<Branch<T>>(s, lvls - 1);
     } else {
-      for (uint32_t i = 0; i < l_size; i++) {
+      for (uint32_t i = 0; i <= last_idx; i++) {
         children[i] = make_shared<Leaf<T>>();
         read_only[i] = false;
       }
     }
   }
+
+  void full_populate(uint32_t lvls) {
+    if (1 < lvls) {
+      for (uint32_t i = 0; i < M; i++) {
+        children[i] = make_shared<Branch<T>>(lvls - 1);
+        read_only[i] = false;
+      }
+    } else {
+      for (uint32_t i = 0; i < M; i++) {
+        children[i] = make_shared<Leaf<T>>();
+        read_only[i] = false;
+      }
+    }
+  }
+
   T get(uint32_t idx, uint32_t lvls) {
     auto l_idx = local_idx(idx, lvls);
     return children[l_idx]->get(idx, lvls - 1);
@@ -116,6 +141,8 @@ public:
   }
 
   void mutable_update(uint32_t idx, uint32_t lvls, T some) {
+    // cout << "mutable update on branch, idx: " << idx << ", lvls: " << lvls
+    //      << ", some: " << some << endl;
     auto l_idx = local_idx(idx, lvls);
     if (read_only[l_idx]) {
       children[l_idx] = children[l_idx]->immutable_update(idx, lvls - 1, some);
@@ -149,12 +176,12 @@ public:
       size = s;
       lvls = 1;
     } else {
-      uint32_t level_count = 1;
-      uint32_t x = s;
-      while (x > 0) {
-        x = B >> x;
-        level_count++;
-      }
+      uint32_t level_count = calculate_min_level_count(s);
+      // uint32_t x = s;
+      // while (x > 0) {
+      //   x = B >> x;
+      //   level_count++;
+      // }
       auto r = make_shared<Branch<T>>(s, level_count - 1);
       root = r;
       size = s;
@@ -178,6 +205,10 @@ public:
     } else
       root->mutable_update(idx, lvls - 1, some);
   }
+
+  int get_levels() { return lvls; }
+
+  int get_size() { return size; }
 
   // void push_back(T some) {}
 
