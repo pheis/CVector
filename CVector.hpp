@@ -78,7 +78,7 @@ public:
     auto l_size = local_idx(s, lvls);
     if (1 < lvls) {
       for (uint32_t i = 0; i < l_size; i++) {
-        children[i] = make_shared<Branch<T>>(lvls - 1);
+        children[i] = make_shared<Branch<T>>(s, lvls - 1);
         read_only[i] = false;
       }
     } else {
