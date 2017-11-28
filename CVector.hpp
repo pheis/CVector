@@ -8,10 +8,10 @@ using std::array;
 using std::make_shared;
 using std::shared_ptr;
 
-using std::cout;
-using std::endl;
+// using std::cout;
+// using std::endl;
 
-const uint32_t B = 3;
+const uint32_t B = 5;
 const uint32_t M = 1 << B;
 
 uint32_t local_idx(uint32_t idx, uint32_t lvls) {
@@ -40,15 +40,15 @@ public:
   }
 
   void mutable_update(uint32_t idx, uint32_t lvls, T some) {
-    cout << "mutable update on leaf, idx: " << idx << ", lvls: " << lvls
-         << ", some: " << some << endl;
+    // cout << "mutable update on leaf, idx: " << idx << ", lvls: " << lvls
+    //     << ", some: " << some << endl;
     auto l_idx = local_idx(idx, lvls);
     children[l_idx] = some;
   }
 
   shared_ptr<Node<T>> immutable_update(uint32_t idx, uint32_t lvls, T some) {
-    cout << "immutable update on leaf, idx: " << idx << ", lvls: " << lvls
-         << ", some: " << some << endl;
+    // cout << "immutable update on leaf, idx: " << idx << ", lvls: " << lvls
+    //     << ", some: " << some << endl;
     shared_ptr<Node<T>> new_leaf = make_shared<Leaf<T>>(Leaf<T>(children));
     new_leaf->mutable_update(idx, lvls, some);
     return new_leaf;
@@ -60,7 +60,7 @@ public:
   array<shared_ptr<Node<T>>, M> children;
   array<bool, M> read_only;
 
-  explicit Branch(uint32_t lvls) { populate_children(lvls); }
+  explicit Branch(uint32_t s, uint32_t lvls) { populate_children(s, lvls); }
 
   explicit Branch(array<shared_ptr<Node<T>>, M> c, array<bool, M> ro) {
     children = c;
@@ -74,14 +74,15 @@ public:
       read_only[i] = true;
   }
 
-  void populate_children(uint32_t lvls) {
+  void populate_children(uint32_t s, uint32_t lvls) {
+    auto l_size = local_idx(s, lvls);
     if (1 < lvls) {
-      for (uint32_t i = 0; i < M; i++) {
+      for (uint32_t i = 0; i < l_size; i++) {
         children[i] = make_shared<Branch<T>>(lvls - 1);
         read_only[i] = false;
       }
     } else {
-      for (uint32_t i = 0; i < M; i++) {
+      for (uint32_t i = 0; i < l_size; i++) {
         children[i] = make_shared<Leaf<T>>();
         read_only[i] = false;
       }
@@ -154,7 +155,7 @@ public:
         x = B >> x;
         level_count++;
       }
-      auto r = make_shared<Branch<T>>(level_count - 1);
+      auto r = make_shared<Branch<T>>(s, level_count - 1);
       root = r;
       size = s;
       lvls = level_count;
@@ -163,9 +164,9 @@ public:
   }
 
   CVector snapshot() {
-    cout << "Snap" << endl;
+    // cout << "Snap" << endl;
     read_only = true;
-    return CVector(root, size, lvls, false);
+    return CVector(root, size, lvls, true);
   }
 
   T get(uint32_t idx) { return root->get(idx, lvls - 1); }
@@ -178,7 +179,7 @@ public:
       root->mutable_update(idx, lvls - 1, some);
   }
 
-  void push_back(T some) {}
+  // void push_back(T some) {}
 
 private:
   shared_ptr<Node<T>> root;
