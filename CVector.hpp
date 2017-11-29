@@ -7,8 +7,8 @@ using std::array;
 using std::make_shared;
 using std::shared_ptr;
 
-// using std::cout;
-// using std::endl;
+using std::cout;
+using std::endl;
 
 const uint32_t B = 5;
 const uint32_t M = 1 << B;
@@ -23,6 +23,8 @@ uint32_t calculate_min_level_count(uint32_t size) {
   }
   return lvl_count;
 }
+
+uint32_t get_leaf(uint32_t idx) { return idx / M; };
 
 template <class T> class Node {
 public:
@@ -67,23 +69,21 @@ public:
   array<bool, M> read_only;
 
   // partial populate
-  explicit Branch(uint32_t s, uint32_t lvls) { populate_children(s, lvls); }
-
+  explicit Branch(uint32_t s, uint32_t lvls) { partial_populate(s, lvls); }
+  // full populate
   explicit Branch(uint32_t lvls) { full_populate(lvls); }
-
+  // this is the default
   explicit Branch(array<shared_ptr<Node<T>>, M> c, array<bool, M> ro) {
     children = c;
     read_only = ro;
   }
-
-  explicit Branch(shared_ptr<Node<T>> &old_root) {
-    for (uint32_t i = 0; i < M; i++)
-      children[i] = old_root;
-    for (uint32_t i = 0; i < M; i++)
-      read_only[i] = true;
+  // this one is called from push_back;
+  explicit Branch(shared_ptr<Node<T>> &old_root, bool ro) {
+    children[0] = old_root;
+    read_only[0] = ro;
   }
 
-  void populate_children(uint32_t s, uint32_t lvls) {
+  void partial_populate(uint32_t s, uint32_t lvls) {
     auto last_idx = local_idx(s - 1, lvls);
     if (lvls > 1) {
       for (uint32_t i = 0; i < last_idx; i++) {
@@ -118,10 +118,30 @@ public:
     return children[l_idx]->get(idx, lvls - 1);
   }
 
+  void fix_null_child(uint32_t idx, uint32_t lvls) {
+    // cout << "Fixing the null child;" << endl;
+    auto l_idx = local_idx(idx, lvls);
+    // bug is under this line.
+    if (children[l_idx] == nullptr) {
+      // cout << "There was a truly NULL child." << endl;
+      // partial populate the child
+      // THis one is wrong.
+      // child could be a leaf.
+      if (lvls == 1) {
+        children[l_idx] = make_shared<Leaf<T>>();
+      } else {
+        children[l_idx] = make_shared<Branch<T>>(idx + 1, lvls - 1);
+      }
+    }
+  }
+
   shared_ptr<Node<T>> immutable_update(uint32_t idx, uint32_t lvls, T some) {
     // cout << "immutable update on branch, idx: " << idx << ", lvls: " << lvls
-    //      << ", some: " << some << endl;
+    //     << ", some: " << some << endl;
     auto l_idx = local_idx(idx, lvls);
+    // this check is needed for push_back
+    fix_null_child(idx, lvls);
+    //
     auto new_read_only = array<bool, M>();
     for (uint32_t i = 0; i < M; i++) {
       new_read_only[i] = true;
@@ -141,8 +161,10 @@ public:
   }
 
   void mutable_update(uint32_t idx, uint32_t lvls, T some) {
+    // check needed for push_back()
+    fix_null_child(idx, lvls);
     // cout << "mutable update on branch, idx: " << idx << ", lvls: " << lvls
-    //      << ", some: " << some << endl;
+    //     << ", some: " << some << endl;
     auto l_idx = local_idx(idx, lvls);
     if (read_only[l_idx]) {
       children[l_idx] = children[l_idx]->immutable_update(idx, lvls - 1, some);
@@ -204,6 +226,30 @@ public:
       read_only = false;
     } else
       root->mutable_update(idx, lvls - 1, some);
+  }
+
+  void push_back(T some) {
+    if (size == 0) {
+      root = make_shared<Leaf<T>>();
+      size++;
+      lvls++;
+      set(0, some);
+    } else {
+      auto new_size = size + 1;
+      auto idx = size; // idx where we insert is the old_size
+      auto same_level = ((1 << (B * lvls)) != idx);
+      if (same_level) {
+        // cout << "was same level" << endl;
+        size = new_size;
+        set(idx, some);
+      } else {
+        // cout << "was not same level" << endl;
+        size = new_size;
+        lvls = lvls + 1;
+        root = make_shared<Branch<T>>(root, read_only);
+        set(idx, some);
+      }
+    }
   }
 
   int get_levels() { return lvls; }
