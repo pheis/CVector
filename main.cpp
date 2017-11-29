@@ -15,6 +15,8 @@ int main() {
   auto v = CVector<int>();
   for (int i = 0; i < 34; i++)
     v.push_back(i);
-  cout << v.get(32) << endl;
+  v[0] = 1234;
+  cout << v[32] << endl;
   cout << v.get(0) << endl;
+
 }

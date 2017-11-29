@@ -13,18 +13,18 @@ using std::endl;
 const uint32_t B = 5;
 const uint32_t M = 1 << B;
 
-uint32_t local_idx(uint32_t idx, uint32_t lvls) {
+uint32_t local_idx(const uint32_t idx, const uint32_t lvls) {
   return (idx >> (B * lvls)) & (M - 1);
 }
 
-uint32_t calculate_min_level_count(uint32_t size) {
+uint32_t calculate_min_level_count(const uint32_t size) {
   uint32_t lvl_count = 0;
   for (uint32_t x = size; x > 0; x = x >> B, lvl_count++) {
   }
   return lvl_count;
 }
 
-uint32_t get_leaf(uint32_t idx) { return idx / M; };
+uint32_t get_leaf(const uint32_t idx) { return idx / M; };
 
 template <class T> class Node {
 public:
@@ -47,14 +47,15 @@ public:
     return children[l_idx];
   }
 
-  void mutable_update(uint32_t idx, uint32_t lvls, T some) {
+  void mutable_update(const uint32_t idx, const uint32_t lvls, const T some) {
     // cout << "mutable update on leaf, idx: " << idx << ", lvls: " << lvls
     //     << ", some: " << some << endl;
     auto l_idx = local_idx(idx, lvls);
     children[l_idx] = some;
   }
 
-  shared_ptr<Node<T>> immutable_update(uint32_t idx, uint32_t lvls, T some) {
+  shared_ptr<Node<T>> immutable_update(const uint32_t idx, const uint32_t lvls,
+                                       const T some) {
     // cout << "immutable update on leaf, idx: " << idx << ", lvls: " << lvls
     //      << ", some: " << some << endl;
     shared_ptr<Node<T>> new_leaf = make_shared<Leaf<T>>(Leaf<T>(children));
@@ -69,11 +70,14 @@ public:
   array<bool, M> read_only;
 
   // partial populate
-  explicit Branch(uint32_t s, uint32_t lvls) { partial_populate(s, lvls); }
+  explicit Branch(const uint32_t s, const uint32_t lvls) {
+    partial_populate(s, lvls);
+  }
   // full populate
-  explicit Branch(uint32_t lvls) { full_populate(lvls); }
+  explicit Branch(const uint32_t lvls) { full_populate(lvls); }
   // this is the default
-  explicit Branch(array<shared_ptr<Node<T>>, M> c, array<bool, M> ro) {
+  explicit Branch(const array<shared_ptr<Node<T>>, M> c,
+                  const array<bool, M> ro) {
     children = c;
     read_only = ro;
   }
@@ -83,7 +87,7 @@ public:
     read_only[0] = ro;
   }
 
-  void partial_populate(uint32_t s, uint32_t lvls) {
+  void partial_populate(const uint32_t s, const uint32_t lvls) {
     auto last_idx = local_idx(s - 1, lvls);
     if (lvls > 1) {
       for (uint32_t i = 0; i < last_idx; i++) {
@@ -99,7 +103,7 @@ public:
     }
   }
 
-  void full_populate(uint32_t lvls) {
+  void full_populate(const uint32_t lvls) {
     if (1 < lvls) {
       for (uint32_t i = 0; i < M; i++) {
         children[i] = make_shared<Branch<T>>(lvls - 1);
@@ -113,20 +117,14 @@ public:
     }
   }
 
-  T get(uint32_t idx, uint32_t lvls) {
+  T get(const uint32_t idx, const uint32_t lvls) {
     auto l_idx = local_idx(idx, lvls);
     return children[l_idx]->get(idx, lvls - 1);
   }
 
-  void fix_null_child(uint32_t idx, uint32_t lvls) {
-    // cout << "Fixing the null child;" << endl;
+  void fix_null_child(const uint32_t idx, const uint32_t lvls) {
     auto l_idx = local_idx(idx, lvls);
-    // bug is under this line.
     if (children[l_idx] == nullptr) {
-      // cout << "There was a truly NULL child." << endl;
-      // partial populate the child
-      // THis one is wrong.
-      // child could be a leaf.
       if (lvls == 1) {
         children[l_idx] = make_shared<Leaf<T>>();
       } else {
@@ -135,7 +133,8 @@ public:
     }
   }
 
-  shared_ptr<Node<T>> immutable_update(uint32_t idx, uint32_t lvls, T some) {
+  shared_ptr<Node<T>> immutable_update(const uint32_t idx, const uint32_t lvls,
+                                       const T some) {
     // cout << "immutable update on branch, idx: " << idx << ", lvls: " << lvls
     //     << ", some: " << some << endl;
     auto l_idx = local_idx(idx, lvls);
@@ -160,7 +159,7 @@ public:
     return new_branch;
   }
 
-  void mutable_update(uint32_t idx, uint32_t lvls, T some) {
+  void mutable_update(const uint32_t idx, const uint32_t lvls, const T some) {
     // check needed for push_back()
     fix_null_child(idx, lvls);
     // cout << "mutable update on branch, idx: " << idx << ", lvls: " << lvls
@@ -187,7 +186,7 @@ public:
   explicit CVector<T>(shared_ptr<Node<T>> r, uint32_t s, uint32_t l, bool ro)
       : root(r), size(s), lvls(l), read_only(ro) {}
 
-  explicit CVector<T>(int s) {
+  explicit CVector<T>(const int s) {
     if (s == 0) {
       root = nullptr;
       size = 0;
@@ -218,9 +217,9 @@ public:
     return CVector(root, size, lvls, true);
   }
 
-  T get(uint32_t idx) { return root->get(idx, lvls - 1); }
+  T get(const uint32_t idx) { return root->get(idx, lvls - 1); }
 
-  void set(uint32_t idx, T some) {
+  void set(const uint32_t idx, T some) {
     if (read_only) {
       root = root->immutable_update(idx, lvls - 1, some);
       read_only = false;
@@ -228,7 +227,7 @@ public:
       root->mutable_update(idx, lvls - 1, some);
   }
 
-  void push_back(T some) {
+  void push_back(const T some) {
     if (size == 0) {
       root = make_shared<Leaf<T>>();
       size++;
@@ -256,7 +255,25 @@ public:
 
   int get_size() { return size; }
 
-  // void push_back(T some) {}
+  struct Deref {
+    CVector &v;
+    int idx;
+    Deref(CVector &v, int idx) : v(v), idx(idx) {}
+
+    operator T() {
+      // std::cout << "reading\n"; return a.data[index];
+      return v.get(idx);
+    }
+
+    // T &operator=(const T &some) {
+    Deref &operator=(const T &some) {
+      // std::cout << "writing\n"; return a.data[index] = other;
+      v.set(idx, some);
+      return *this;
+    }
+  };
+
+  Deref operator[](const int idx) { return Deref(*this, idx); }
 
 private:
   shared_ptr<Node<T>> root;
