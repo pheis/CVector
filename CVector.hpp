@@ -29,10 +29,10 @@ uint32_t get_leaf(const uint32_t idx) { return idx / M; };
 template <class T> class Node {
 public:
   virtual shared_ptr<Node<T>>
-  immutable_update(const uint32_t idx, const uint32_t lvls, const T some) = 0;
+  immutable_update(const uint32_t idx, const uint32_t lvls, const T &some) = 0;
   virtual void mutable_update(const uint32_t idx, const uint32_t lvls,
-                              const T some) = 0;
-  virtual T get(const uint32_t idx, const uint32_t levels) = 0;
+                              const T &some) = 0;
+  virtual T get(const uint32_t idx, const uint32_t levels) const = 0;
 };
 
 template <class T> class Leaf : public Node<T> {
@@ -43,12 +43,12 @@ public:
 
   explicit Leaf(array<T, M> c) : children(c) {}
 
-  T get(uint32_t idx, uint32_t lvls) {
+  T get(const uint32_t idx, const uint32_t lvls) const {
     auto l_idx = local_idx(idx, lvls);
     return children[l_idx];
   }
 
-  void mutable_update(const uint32_t idx, const uint32_t lvls, const T some) {
+  void mutable_update(const uint32_t idx, const uint32_t lvls, const T &some) {
     // cout << "mutable update on leaf, idx: " << idx << ", lvls: " << lvls
     //     << ", some: " << some << endl;
     auto l_idx = local_idx(idx, lvls);
@@ -56,7 +56,7 @@ public:
   }
 
   shared_ptr<Node<T>> immutable_update(const uint32_t idx, const uint32_t lvls,
-                                       const T some) {
+                                       const T &some) {
     // cout << "immutable update on leaf, idx: " << idx << ", lvls: " << lvls
     //      << ", some: " << some << endl;
     shared_ptr<Node<T>> new_leaf = make_shared<Leaf<T>>(Leaf<T>(children));
@@ -77,8 +77,8 @@ public:
   // full populate
   explicit Branch(const uint32_t lvls) { full_populate(lvls); }
   // this is the default
-  explicit Branch(const array<shared_ptr<Node<T>>, M> c,
-                  const array<bool, M> ro) {
+  explicit Branch(const array<shared_ptr<Node<T>>, M> &c,
+                  const array<bool, M> &ro) {
     children = c;
     read_only = ro;
   }
@@ -118,7 +118,7 @@ public:
     }
   }
 
-  T get(const uint32_t idx, const uint32_t lvls) {
+  T get(const uint32_t idx, const uint32_t lvls) const {
     auto l_idx = local_idx(idx, lvls);
     return children[l_idx]->get(idx, lvls - 1);
   }
@@ -135,7 +135,7 @@ public:
   }
 
   shared_ptr<Node<T>> immutable_update(const uint32_t idx, const uint32_t lvls,
-                                       const T some) {
+                                       const T &some) {
     // cout << "immutable update on branch, idx: " << idx << ", lvls: " << lvls
     //     << ", some: " << some << endl;
     auto l_idx = local_idx(idx, lvls);
@@ -160,7 +160,7 @@ public:
     return new_branch;
   }
 
-  void mutable_update(const uint32_t idx, const uint32_t lvls, const T some) {
+  void mutable_update(const uint32_t idx, const uint32_t lvls, const T &some) {
     // check needed for push_back()
     fix_null_child(idx, lvls);
     // cout << "mutable update on branch, idx: " << idx << ", lvls: " << lvls
@@ -218,9 +218,9 @@ public:
     return CVector(root, size, lvls, true);
   }
 
-  T get(const uint32_t idx) { return root->get(idx, lvls - 1); }
+  T get(const uint32_t idx) const { return root->get(idx, lvls - 1); }
 
-  void set(const uint32_t idx, T some) {
+  void set(const uint32_t idx, const T &some) {
     if (read_only) {
       root = root->immutable_update(idx, lvls - 1, some);
       read_only = false;
@@ -228,7 +228,7 @@ public:
       root->mutable_update(idx, lvls - 1, some);
   }
 
-  void push_back(const T some) {
+  void push_back(T &some) {
     if (size == 0) {
       root = make_shared<Leaf<T>>();
       size++;
@@ -267,8 +267,7 @@ public:
     }
 
     // T &operator=(const T &some) {
-    Proxy &operator=(const T &some) {
-      // std::cout << "writing\n"; return a.data[index] = other;
+    Proxy &operator=(T &some) {
       v.set(idx, some);
       return *this;
     }
@@ -276,10 +275,12 @@ public:
 
   Proxy operator[](const int idx) { return Proxy(*this, idx); }
 
-  // map
+  // TODO
+  // map -- in a some bulk update style
   // mapWithIndex
   // filter
   // reduce
+  // concat in log_2(n)
 
 private:
   shared_ptr<Node<T>> root;
