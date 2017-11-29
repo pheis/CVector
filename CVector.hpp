@@ -28,10 +28,11 @@ uint32_t get_leaf(const uint32_t idx) { return idx / M; };
 
 template <class T> class Node {
 public:
-  virtual shared_ptr<Node<T>> immutable_update(uint32_t idx, uint32_t lvls,
-                                               T some) = 0;
-  virtual void mutable_update(uint32_t idx, uint32_t lvls, T some) = 0;
-  virtual T get(uint32_t idx, uint32_t levels) = 0;
+  virtual shared_ptr<Node<T>>
+  immutable_update(const uint32_t idx, const uint32_t lvls, const T some) = 0;
+  virtual void mutable_update(const uint32_t idx, const uint32_t lvls,
+                              const T some) = 0;
+  virtual T get(const uint32_t idx, const uint32_t levels) = 0;
 };
 
 template <class T> class Leaf : public Node<T> {
@@ -251,14 +252,14 @@ public:
     }
   }
 
-  int get_levels() { return lvls; }
+  int get_levels() const { return lvls; }
 
-  int get_size() { return size; }
+  int get_size() const { return size; }
 
-  struct Deref {
+  struct Proxy {
     CVector &v;
     int idx;
-    Deref(CVector &v, int idx) : v(v), idx(idx) {}
+    Proxy(CVector &v, int idx) : v(v), idx(idx) {}
 
     operator T() {
       // std::cout << "reading\n"; return a.data[index];
@@ -266,14 +267,19 @@ public:
     }
 
     // T &operator=(const T &some) {
-    Deref &operator=(const T &some) {
+    Proxy &operator=(const T &some) {
       // std::cout << "writing\n"; return a.data[index] = other;
       v.set(idx, some);
       return *this;
     }
   };
 
-  Deref operator[](const int idx) { return Deref(*this, idx); }
+  Proxy operator[](const int idx) { return Proxy(*this, idx); }
+
+  // map
+  // mapWithIndex
+  // filter
+  // reduce
 
 private:
   shared_ptr<Node<T>> root;

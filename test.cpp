@@ -2,6 +2,8 @@
 #include "CVector.hpp"
 #include "catch.hpp"
 
+// TODO randomized testing
+
 TEST_CASE("Integers are inserted and read", "[CVector]") {
   int size_for_vector = 1000000;
   auto v1 = CVector<int>(size_for_vector);
@@ -45,6 +47,19 @@ TEST_CASE("push_back", "[CVector]") {
   int size = 10000;
   for (int i = 0; i < size; i++) {
     v1.push_back(i);
+  }
+  REQUIRE(v1.get(size - 1) == size - 1);
+  REQUIRE(v1.get(1) == 1);
+  REQUIRE(v1.get(0) == 0);
+  REQUIRE(v1.get(31) == 31);
+  REQUIRE(v1.get(1024) == 1024);
+}
+
+TEST_CASE("subscript operator", "[CVector]") {
+  int size = 10000;
+  auto v1 = CVector<int>(size);
+  for (int i = 0; i < size; i++) {
+    v1[i] = i;
   }
   REQUIRE(v1.get(size - 1) == size - 1);
   REQUIRE(v1.get(1) == 1);
